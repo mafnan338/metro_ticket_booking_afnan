@@ -58,7 +58,7 @@ beforeAll(async () => {
   await new Promise(r => server.listen(0, r));
   process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
-  process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5';
+  process.env.ANTHROPIC_MODEL = 'claude-haiku-5-5';
   ({ processChat } = await import('../services/chatService.js'));
 
   await mongoose.connect('mongodb://127.0.0.1:27017/metro_test_chat');

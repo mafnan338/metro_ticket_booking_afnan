@@ -1,17 +1,28 @@
-import { ChatAnthropic } from '@langchain/anthropic';
-import { tool } from '@langchain/core/tools';
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import { z } from 'zod';
-import * as ticketSvc from './ticketService.js';
-import * as stationSvc from './stationService.js';
+import { ChatAnthropic } from "@langchain/anthropic";
+import { tool } from "@langchain/core/tools";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { z } from "zod";
+import * as ticketSvc from "./ticketService.js";
+import * as stationSvc from "./stationService.js";
 
 const MAX_TOOL_ROUNDS = 6;
 const MAX_HISTORY_MESSAGES = 40;
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_SESSIONS = 1000;
-const PLACEHOLDER_KEYS = new Set(['', 'your_key', 'your_anthropic_api_key', 'sk-ant-...']);
+const PLACEHOLDER_KEYS = new Set([
+  "",
+  "your_key",
+  "your_anthropic_api_key",
+  "sk-ant-...",
+]);
 
-const CONFIRM_RX = /\b(yes|yeah|yep|yup|confirm(ed)?|proceed|go ahead|book it|ok(ay)?|sure|do it|please book)\b/i;
+const CONFIRM_RX =
+  /\b(yes|yeah|yep|yup|confirm(ed)?|proceed|go ahead|book it|ok(ay)?|sure|do it|please book)\b/i;
 const REJECT_RX = /\b(no|nope|don'?t|do not|cancel|stop|wait|not now)\b/i;
 
 const SYSTEM_PROMPT = `You are the Metro Assistant for the Bengaluru Metro Ticket Booking System.
@@ -38,7 +49,8 @@ function getSession(sessionId) {
   }
   let s = sessions.get(sessionId);
   if (!s) {
-    if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
+    if (sessions.size >= MAX_SESSIONS)
+      sessions.delete(sessions.keys().next().value);
     s = { history: [], pendingBooking: null, updatedAt: now };
     sessions.set(sessionId, s);
   }
@@ -49,7 +61,7 @@ function getSession(sessionId) {
 function trimHistory(history) {
   let trimmed = history.slice(-MAX_HISTORY_MESSAGES);
   // History must start at a human turn so tool_use / tool_result pairs are never split.
-  const firstHuman = trimmed.findIndex(m => m instanceof HumanMessage);
+  const firstHuman = trimmed.findIndex((m) => m instanceof HumanMessage);
   return firstHuman === -1 ? [] : trimmed.slice(firstHuman);
 }
 
@@ -61,166 +73,238 @@ async function resolveOrExplain(input, role) {
   const { station, candidates } = await stationSvc.resolveStation(input);
   if (station) return { station };
   if (candidates.length) {
-    return { error: `Ambiguous ${role} station "${input}". Candidates: ${JSON.stringify(candidates.map(publicStation))}` };
+    return {
+      error: `Ambiguous ${role} station "${input}". Candidates: ${JSON.stringify(candidates.map(publicStation))}`,
+    };
   }
-  return { error: `No ${role} station matches "${input}". Use search_station or get_stations to find valid stations.` };
+  return {
+    error: `No ${role} station matches "${input}". Use search_station or get_stations to find valid stations.`,
+  };
 }
 
 function buildTools(session, ctx) {
   return [
-    tool(async () => {
-      const stations = await stationSvc.getAllStations();
-      return JSON.stringify(stations.map(publicStation));
-    }, {
-      name: 'get_stations',
-      description: 'List all metro stations with stationId, name, line and price.',
-      schema: z.object({})
-    }),
+    tool(
+      async () => {
+        const stations = await stationSvc.getAllStations();
+        return JSON.stringify(stations.map(publicStation));
+      },
+      {
+        name: "get_stations",
+        description:
+          "List all metro stations with stationId, name, line and price.",
+        schema: z.object({}),
+      },
+    ),
 
-    tool(async ({ query }) => {
-      const results = await stationSvc.searchStation(query);
-      if (!results.length) return `No stations found matching "${query}".`;
-      return JSON.stringify(results.map(publicStation));
-    }, {
-      name: 'search_station',
-      description: 'Search stations by (partial) name, station ID or line name.',
-      schema: z.object({ query: z.string().describe('Search text, e.g. "majestic", "ST010" or "Blue Line"') })
-    }),
+    tool(
+      async ({ query }) => {
+        const results = await stationSvc.searchStation(query);
+        if (!results.length) return `No stations found matching "${query}".`;
+        return JSON.stringify(results.map(publicStation));
+      },
+      {
+        name: "search_station",
+        description:
+          "Search stations by (partial) name, station ID or line name.",
+        schema: z.object({
+          query: z
+            .string()
+            .describe('Search text, e.g. "majestic", "ST010" or "Blue Line"'),
+        }),
+      },
+    ),
 
-    tool(async ({ source, destination }) => {
-      const s = await resolveOrExplain(source, 'source');
-      if (s.error) return `Error: ${s.error}`;
-      const d = await resolveOrExplain(destination, 'destination');
-      if (d.error) return `Error: ${d.error}`;
-      try {
-        const q = await ticketSvc.quoteFare(s.station.stationId, d.station.stationId);
-        return JSON.stringify({ source: publicStation(q.source), destination: publicStation(q.dest), fare: q.fare, currency: 'INR' });
-      } catch (err) {
-        return `Error: ${err.message}`;
-      }
-    }, {
-      name: 'calculate_fare',
-      description: 'Calculate the fare between two stations. Accepts station IDs or station names.',
-      schema: z.object({
-        source: z.string().describe('Source station ID or name'),
-        destination: z.string().describe('Destination station ID or name')
-      })
-    }),
+    tool(
+      async ({ source, destination }) => {
+        const s = await resolveOrExplain(source, "source");
+        if (s.error) return `Error: ${s.error}`;
+        const d = await resolveOrExplain(destination, "destination");
+        if (d.error) return `Error: ${d.error}`;
+        try {
+          const q = await ticketSvc.quoteFare(
+            s.station.stationId,
+            d.station.stationId,
+          );
+          return JSON.stringify({
+            source: publicStation(q.source),
+            destination: publicStation(q.dest),
+            fare: q.fare,
+            currency: "INR",
+          });
+        } catch (err) {
+          return `Error: ${err.message}`;
+        }
+      },
+      {
+        name: "calculate_fare",
+        description:
+          "Calculate the fare between two stations. Accepts station IDs or station names.",
+        schema: z.object({
+          source: z.string().describe("Source station ID or name"),
+          destination: z.string().describe("Destination station ID or name"),
+        }),
+      },
+    ),
 
-    tool(async ({ source, destination }) => {
-      const s = await resolveOrExplain(source, 'source');
-      if (s.error) return `Error: ${s.error}`;
-      const d = await resolveOrExplain(destination, 'destination');
-      if (d.error) return `Error: ${d.error}`;
-      try {
-        const q = await ticketSvc.quoteFare(s.station.stationId, d.station.stationId);
-        session.pendingBooking = {
-          sourceStationId: q.source.stationId,
-          destinationStationId: q.dest.stationId,
-          fare: q.fare,
-          preparedTurn: ctx.turn
-        };
-        return JSON.stringify({
-          status: 'awaiting_user_confirmation',
-          source: publicStation(q.source),
-          destination: publicStation(q.dest),
-          fare: q.fare,
-          currency: 'INR',
-          note: 'Ask the user to reply "yes" to confirm. Do not call confirm_booking until they do.'
-        });
-      } catch (err) {
-        return `Error: ${err.message}`;
-      }
-    }, {
-      name: 'prepare_booking',
-      description: 'Step 1 of booking: validate stations and get the real fare quote. Does NOT book. Must be followed by user confirmation.',
-      schema: z.object({
-        source: z.string().describe('Source station ID or name'),
-        destination: z.string().describe('Destination station ID or name')
-      })
-    }),
+    tool(
+      async ({ source, destination }) => {
+        const s = await resolveOrExplain(source, "source");
+        if (s.error) return `Error: ${s.error}`;
+        const d = await resolveOrExplain(destination, "destination");
+        if (d.error) return `Error: ${d.error}`;
+        try {
+          const q = await ticketSvc.quoteFare(
+            s.station.stationId,
+            d.station.stationId,
+          );
+          session.pendingBooking = {
+            sourceStationId: q.source.stationId,
+            destinationStationId: q.dest.stationId,
+            fare: q.fare,
+            preparedTurn: ctx.turn,
+          };
+          return JSON.stringify({
+            status: "awaiting_user_confirmation",
+            source: publicStation(q.source),
+            destination: publicStation(q.dest),
+            fare: q.fare,
+            currency: "INR",
+            note: 'Ask the user to reply "yes" to confirm. Do not call confirm_booking until they do.',
+          });
+        } catch (err) {
+          return `Error: ${err.message}`;
+        }
+      },
+      {
+        name: "prepare_booking",
+        description:
+          "Step 1 of booking: validate stations and get the real fare quote. Does NOT book. Must be followed by user confirmation.",
+        schema: z.object({
+          source: z.string().describe("Source station ID or name"),
+          destination: z.string().describe("Destination station ID or name"),
+        }),
+      },
+    ),
 
-    tool(async () => {
-      const pending = session.pendingBooking;
-      if (!pending) return 'Error: No pending booking. Call prepare_booking first and get user confirmation.';
-      if (pending.preparedTurn === ctx.turn) {
-        return 'Error: The user has not confirmed yet. Show the quote and wait for their reply.';
-      }
-      if (!ctx.userConfirmed) {
-        return 'Error: The user\'s latest message is not an explicit confirmation. Ask them to reply "yes" to book.';
-      }
-      try {
-        const ticket = await ticketSvc.createTicket(pending.sourceStationId, pending.destinationStationId);
+    tool(
+      async () => {
+        const pending = session.pendingBooking;
+        if (!pending)
+          return "Error: No pending booking. Call prepare_booking first and get user confirmation.";
+        if (pending.preparedTurn === ctx.turn) {
+          return "Error: The user has not confirmed yet. Show the quote and wait for their reply.";
+        }
+        if (!ctx.userConfirmed) {
+          return 'Error: The user\'s latest message is not an explicit confirmation. Ask them to reply "yes" to book.';
+        }
+        try {
+          const ticket = await ticketSvc.createTicket(
+            pending.sourceStationId,
+            pending.destinationStationId,
+          );
+          session.pendingBooking = null;
+          ctx.bookedTickets.push(ticket);
+          return JSON.stringify({ booked: true, ticket });
+        } catch (err) {
+          return `Error: Booking failed: ${err.message}`;
+        }
+      },
+      {
+        name: "confirm_booking",
+        description:
+          "Step 2 of booking: book the ticket quoted by prepare_booking. Only call after the user explicitly confirmed in their latest message.",
+        schema: z.object({}),
+      },
+    ),
+
+    tool(
+      async () => {
         session.pendingBooking = null;
-        ctx.bookedTickets.push(ticket);
-        return JSON.stringify({ booked: true, ticket });
-      } catch (err) {
-        return `Error: Booking failed: ${err.message}`;
-      }
-    }, {
-      name: 'confirm_booking',
-      description: 'Step 2 of booking: book the ticket quoted by prepare_booking. Only call after the user explicitly confirmed in their latest message.',
-      schema: z.object({})
-    }),
+        return "Pending booking cancelled.";
+      },
+      {
+        name: "cancel_pending_booking",
+        description:
+          "Cancel the pending (unconfirmed) booking quote when the user declines.",
+        schema: z.object({}),
+      },
+    ),
 
-    tool(async () => {
-      session.pendingBooking = null;
-      return 'Pending booking cancelled.';
-    }, {
-      name: 'cancel_pending_booking',
-      description: 'Cancel the pending (unconfirmed) booking quote when the user declines.',
-      schema: z.object({})
-    }),
+    tool(
+      async ({ ticketId }) => {
+        const ticket = await ticketSvc.getTicket(ticketId);
+        if (!ticket) return `Error: Ticket ${ticketId} not found.`;
+        ctx.lookedUpTickets.push(ticket);
+        return JSON.stringify(ticket);
+      },
+      {
+        name: "get_ticket_status",
+        description: "Get ticket details and current status by ticket ID.",
+        schema: z.object({
+          ticketId: z.string().describe("The exact ticket ID (UUID)"),
+        }),
+      },
+    ),
 
-    tool(async ({ ticketId }) => {
-      const ticket = await ticketSvc.getTicket(ticketId);
-      if (!ticket) return `Error: Ticket ${ticketId} not found.`;
-      ctx.lookedUpTickets.push(ticket);
-      return JSON.stringify(ticket);
-    }, {
-      name: 'get_ticket_status',
-      description: 'Get ticket details and current status by ticket ID.',
-      schema: z.object({ ticketId: z.string().describe('The exact ticket ID (UUID)') })
-    }),
+    tool(
+      async ({ ticketId }) => {
+        try {
+          const ticket = await ticketSvc.validateEntry(ticketId);
+          return JSON.stringify({
+            success: true,
+            message: "Entry validated",
+            ticket,
+          });
+        } catch (err) {
+          return `Error: ${err.message}`;
+        }
+      },
+      {
+        name: "validate_ticket_entry",
+        description:
+          "Perform the entry scan for a ticket. Only when the user explicitly asks.",
+        schema: z.object({ ticketId: z.string() }),
+      },
+    ),
 
-    tool(async ({ ticketId }) => {
-      try {
-        const ticket = await ticketSvc.validateEntry(ticketId);
-        return JSON.stringify({ success: true, message: 'Entry validated', ticket });
-      } catch (err) {
-        return `Error: ${err.message}`;
-      }
-    }, {
-      name: 'validate_ticket_entry',
-      description: 'Perform the entry scan for a ticket. Only when the user explicitly asks.',
-      schema: z.object({ ticketId: z.string() })
-    }),
-
-    tool(async ({ ticketId }) => {
-      try {
-        const ticket = await ticketSvc.validateExit(ticketId);
-        return JSON.stringify({ success: true, message: 'Exit validated', ticket });
-      } catch (err) {
-        return `Error: ${err.message}`;
-      }
-    }, {
-      name: 'validate_ticket_exit',
-      description: 'Perform the exit scan for a ticket. Only when the user explicitly asks.',
-      schema: z.object({ ticketId: z.string() })
-    })
+    tool(
+      async ({ ticketId }) => {
+        try {
+          const ticket = await ticketSvc.validateExit(ticketId);
+          return JSON.stringify({
+            success: true,
+            message: "Exit validated",
+            ticket,
+          });
+        } catch (err) {
+          return `Error: ${err.message}`;
+        }
+      },
+      {
+        name: "validate_ticket_exit",
+        description:
+          "Perform the exit scan for a ticket. Only when the user explicitly asks.",
+        schema: z.object({ ticketId: z.string() }),
+      },
+    ),
   ];
 }
 
 function textOf(content) {
-  if (typeof content === 'string') return content;
+  if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.filter(b => b?.type === 'text').map(b => b.text).join('\n').trim();
+    return content
+      .filter((b) => b?.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
   }
-  return '';
+  return "";
 }
 
 export function chatbotConfigured() {
-  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+  const key = (process.env.ANTHROPIC_API_KEY || "").trim();
   return !PLACEHOLDER_KEYS.has(key);
 }
 
@@ -234,43 +318,85 @@ export class ChatError extends Error {
 
 function classifyError(err) {
   const status = err?.status ?? err?.response?.status;
-  const msg = String(err?.message || '');
+  const msg = String(err?.message || "");
   if (status === 401 || /invalid x-api-key|authentication/i.test(msg)) {
-    return new ChatError('The AI service rejected the API key. Please check ANTHROPIC_API_KEY in backend/config.env.', 502, 'INVALID_API_KEY');
+    return new ChatError(
+      "The AI service rejected the API key. Please check ANTHROPIC_API_KEY in backend/config.env.",
+      502,
+      "INVALID_API_KEY",
+    );
   }
-  if (status === 403) return new ChatError('The API key is not allowed to use this model.', 502, 'FORBIDDEN');
+  if (status === 403)
+    return new ChatError(
+      "The API key is not allowed to use this model.",
+      502,
+      "FORBIDDEN",
+    );
   if (status === 404 || /not_found_error|model:/i.test(msg)) {
-    return new ChatError(`The configured model "${process.env.ANTHROPIC_MODEL}" was not found. Check ANTHROPIC_MODEL.`, 502, 'MODEL_NOT_FOUND');
+    return new ChatError(
+      `The configured model "${process.env.ANTHROPIC_MODEL}" was not found. Check ANTHROPIC_MODEL.`,
+      502,
+      "MODEL_NOT_FOUND",
+    );
   }
   if (status === 429 || /rate.?limit/i.test(msg)) {
-    return new ChatError('The AI service is rate limited right now. Please wait a moment and try again.', 429, 'RATE_LIMITED');
+    return new ChatError(
+      "The AI service is rate limited right now. Please wait a moment and try again.",
+      429,
+      "RATE_LIMITED",
+    );
   }
   if (status === 529 || /overloaded/i.test(msg)) {
-    return new ChatError('The AI service is overloaded. Please try again shortly.', 503, 'OVERLOADED');
+    return new ChatError(
+      "The AI service is overloaded. Please try again shortly.",
+      503,
+      "OVERLOADED",
+    );
   }
-  if (/timed? ?out|timeout|ETIMEDOUT/i.test(msg) || err?.name === 'APIConnectionTimeoutError') {
-    return new ChatError('The AI service took too long to respond. Please try again.', 504, 'TIMEOUT');
+  if (
+    /timed? ?out|timeout|ETIMEDOUT/i.test(msg) ||
+    err?.name === "APIConnectionTimeoutError"
+  ) {
+    return new ChatError(
+      "The AI service took too long to respond. Please try again.",
+      504,
+      "TIMEOUT",
+    );
   }
   if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|Connection error/i.test(msg)) {
-    return new ChatError('Could not reach the AI service. Check the server\'s internet connection.', 503, 'CONNECTION_ERROR');
+    return new ChatError(
+      "Could not reach the AI service. Check the server's internet connection.",
+      503,
+      "CONNECTION_ERROR",
+    );
   }
-  return new ChatError('The AI assistant hit an unexpected error. Please try again.', 500, 'CHAT_ERROR');
+  return new ChatError(
+    "The AI assistant hit an unexpected error. Please try again.",
+    500,
+    "CHAT_ERROR",
+  );
 }
 
 function createModel() {
   return new ChatAnthropic({
-    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
+    model: process.env.ANTHROPIC_MODEL || "claude-haiku-5-5",
     apiKey: process.env.ANTHROPIC_API_KEY.trim(),
     temperature: 0,
     maxTokens: 1024,
     maxRetries: 1,
-    clientOptions: { timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 30000 }
+    clientOptions: {
+      timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 30000,
+    },
   });
 }
 
-export async function processChat(message, sessionId = 'default') {
+export async function processChat(message, sessionId = "default") {
   if (!chatbotConfigured()) {
-    throw new ChatError('The AI chatbot is not configured. Add a valid ANTHROPIC_API_KEY to backend/config.env and restart the backend.', 503, 'NOT_CONFIGURED');
+    throw new ChatError(
+      "The AI chatbot is not configured. Add a valid ANTHROPIC_API_KEY to backend/config.env and restart the backend.",
+      503,
+      "NOT_CONFIGURED",
+    );
   }
 
   const session = getSession(sessionId);
@@ -278,19 +404,23 @@ export async function processChat(message, sessionId = 'default') {
     turn: (session.turn = (session.turn || 0) + 1),
     userConfirmed: CONFIRM_RX.test(message) && !REJECT_RX.test(message),
     bookedTickets: [],
-    lookedUpTickets: []
+    lookedUpTickets: [],
   };
 
   const tools = buildTools(session, ctx);
-  const toolsByName = Object.fromEntries(tools.map(t => [t.name, t]));
+  const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
   const model = createModel().bindTools(tools);
 
   const turnMessages = [new HumanMessage(message)];
-  let reply = '';
+  let reply = "";
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const response = await model.invoke([new SystemMessage(SYSTEM_PROMPT), ...session.history, ...turnMessages]);
+      const response = await model.invoke([
+        new SystemMessage(SYSTEM_PROMPT),
+        ...session.history,
+        ...turnMessages,
+      ]);
       turnMessages.push(response);
 
       if (!response.tool_calls?.length) {
@@ -302,22 +432,30 @@ export async function processChat(message, sessionId = 'default') {
         const t = toolsByName[call.name];
         let output;
         try {
-          output = t ? await t.invoke(call.args ?? {}) : `Error: Unknown tool ${call.name}`;
+          output = t
+            ? await t.invoke(call.args ?? {})
+            : `Error: Unknown tool ${call.name}`;
         } catch (err) {
           output = `Error: ${err.message}`;
         }
-        turnMessages.push(new ToolMessage({ content: String(output), tool_call_id: call.id, name: call.name }));
+        turnMessages.push(
+          new ToolMessage({
+            content: String(output),
+            tool_call_id: call.id,
+            name: call.name,
+          }),
+        );
       }
     }
   } catch (err) {
-    console.error('Chat error:', err?.status ?? '', err?.message);
+    console.error("Chat error:", err?.status ?? "", err?.message);
     throw classifyError(err);
   }
 
   if (!reply) {
     reply = ctx.bookedTickets.length
       ? `Your ticket is booked. Ticket ID: ${ctx.bookedTickets[0].ticketId}`
-      : 'Sorry, I could not complete that request. Please try rephrasing.';
+      : "Sorry, I could not complete that request. Please try rephrasing.";
     turnMessages.push(new AIMessage(reply));
   }
 
@@ -327,7 +465,7 @@ export async function processChat(message, sessionId = 'default') {
     reply,
     tickets: ctx.bookedTickets,
     lookups: ctx.lookedUpTickets,
-    pendingBooking: session.pendingBooking
+    pendingBooking: session.pendingBooking,
   };
 }
 
