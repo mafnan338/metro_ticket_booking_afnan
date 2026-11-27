@@ -7,13 +7,15 @@ config.env
 # Dependencies
 node_modules/
 
-# Build output
+# Build files
 dist/
 build/
+
+# Logs
+*.log
 
 # macOS
 .DS_Store
 
-# Logs
-*.log
-npm-debug.log*
+# Backup files
+*.save
