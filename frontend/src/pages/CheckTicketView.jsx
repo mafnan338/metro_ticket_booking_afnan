@@ -1,135 +1,158 @@
-import { useState } from 'react';
-import { Search, CheckCircle, XCircle, ArrowRight, LogOut, Clock, Copy } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Search, ScanLine, LogIn, LogOut, RefreshCw, History, Ticket, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
+import TicketCard from '../components/TicketCard';
+import { Alert, Spinner, PageHeader } from '../components/ui';
+import { getRecentTickets } from '../lib/metro';
 
 export default function CheckTicketView() {
-  const [ticketId, setTicketId] = useState('');
+  const [params, setParams] = useSearchParams();
+  const [ticketId, setTicketId] = useState(params.get('id') || '');
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState({ type:'', text:'' });
-  const [copied, setCopied] = useState(false);
-  const [lastAction, setLastAction] = useState('');
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [recent] = useState(getRecentTickets);
 
-  const lookup = async () => {
-    if (!ticketId.trim()) return setMsg({ type:'error', text:'Enter a ticket ID' });
-    setLoading(true); setMsg({}); setTicket(null);
+  const lookup = useCallback(async (id) => {
+    const value = (id ?? ticketId).trim();
+    if (!value) { setMsg({ type: 'error', text: 'Enter a ticket ID to look it up.' }); return; }
+    setTicketId(value);
+    setLoading(true);
+    setMsg(null);
+    setTicket(null);
     try {
-      const r = await api.getTicket(ticketId.trim());
+      const r = await api.getTicket(value);
       setTicket(r.data);
-    } catch (e) { setMsg({ type:'error', text: e.message }); }
-    finally { setLoading(false); }
-  };
+      setParams({ id: value }, { replace: true });
+    } catch (e) {
+      setMsg({ type: 'error', text: e.status === 404 ? 'No ticket found with that ID. Check for typos and try again.' : e.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [ticketId, setParams]);
 
-  const action = async (fn) => {
-    setLoading(true); setMsg({});
+  useEffect(() => {
+    const id = params.get('id');
+    if (id) lookup(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const scan = async (kind) => {
+    setBusy(kind);
+    setMsg(null);
     try {
-      const r = await fn(ticketId.trim());
+      const r = await (kind === 'entry' ? api.entry : api.exit)(ticket.ticketId);
       setTicket(r.data);
-      setMsg({ type:'success', text: r.message });
-    } catch (e) { setMsg({ type:'error', text: e.message }); }
-    finally { setLoading(false); }
+      setMsg({ type: 'success', text: r.message });
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message });
+      api.getTicket(ticket.ticketId).then(r => setTicket(r.data)).catch(() => {});
+    } finally {
+      setBusy('');
+    }
   };
 
-  const copyId = () => {
-    navigator.clipboard.writeText(ticketId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const refresh = async () => {
+    setBusy('refresh');
+    try {
+      const r = await api.getTicket(ticket.ticketId);
+      setTicket(r.data);
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setBusy('');
+    }
   };
 
-  const lineColors = { 'Purple Line':'#9b59b6', 'Blue Line':'#3498db', 'Green Line':'#2ecc71', 'Red Line':'#e74c3c', 'Orange Line':'#f39c12' };
-
-  const statusColor = (s) => ({ active:'#3498db', entry_done:'#f39c12', completed:'#2ecc71', expired:'#e74c3c', invalid:'#999' }[s] || '#666');
+  const finished = ticket && (ticket.status === 'completed' || ticket.status === 'expired');
 
   return (
-    <div style={{ maxWidth:700, margin:'0 auto', padding:32 }}>
-      <h2 style={{ color:'#fff', fontSize:28, marginBottom:24 }}>Check / Validate Ticket</h2>
+    <div className="page">
+      <div className="container container-sm">
+        <PageHeader eyebrow="Ticket validation" icon={ScanLine} title="Check & validate ticket" subtitle="Look up any ticket by its ID to see live status, then simulate the entry and exit gate scans." />
 
-      <div style={{ display:'flex', gap:12, marginBottom:24 }}>
-        <input value={ticketId} onChange={e => setTicketId(e.target.value)} placeholder="Enter ticket ID..." style={{
-          flex:1, padding:'12px 16px', background:'#16213e', color:'#fff', border:'1px solid #333',
-          borderRadius:8, fontSize:14, fontFamily:'monospace', outline:'none'
-        }} />
-        <button onClick={lookup} disabled={loading} style={{
-          padding:'12px 24px', background:'#2c3e50', color:'#fff', border:'none',
-          borderRadius:8, fontWeight:600, cursor:loading ? 'wait' : 'pointer', display:'flex', alignItems:'center', gap:6
-        }}>
-          <Search size={16} /> Lookup
-        </button>
-        <button onClick={copyId} style={{
-          padding:'12px', background:'#1a1a2e', border:'1px solid #333', color:'#fff', borderRadius:8, cursor:'pointer'
-        }}><Copy size={16} /></button>
+        <form className="card card-pad" onSubmit={e => { e.preventDefault(); lookup(); }}>
+          <label className="label" htmlFor="ticket-id">Ticket ID</label>
+          <div className="lookup-bar">
+            <div className="input-icon">
+              <Ticket size={18} />
+              <input id="ticket-id" className="input mono" value={ticketId} onChange={e => setTicketId(e.target.value)} placeholder="e.g. 4a9365d9-c527-4587-a688-3eb98860685e" autoComplete="off" spellCheck={false} />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? <Spinner /> : <Search size={18} />} {loading ? 'Searching…' : 'Look up'}
+            </button>
+          </div>
+
+          {recent.length > 0 && !ticket && (
+            <div style={{ marginTop: 20 }}>
+              <div className="row muted" style={{ fontSize: 13, fontWeight: 600, gap: 6 }}><History size={15} /> Recently booked on this device</div>
+              <div className="recent-list">
+                {recent.map(r => (
+                  <button type="button" key={r.ticketId} className="recent-item" onClick={() => lookup(r.ticketId)}>
+                    <Ticket size={16} color="var(--primary)" />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{r.route}</div>
+                      <code className="mono">{r.ticketId}</code>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </form>
+
+        {msg && <div style={{ marginTop: 20 }}><Alert type={msg.type}>{msg.text}</Alert></div>}
+
+        {loading && (
+          <div className="card" style={{ marginTop: 20, padding: 24 }}>
+            <div className="skeleton" style={{ height: 56, marginBottom: 16 }} />
+            <div className="skeleton" style={{ height: 120, marginBottom: 16 }} />
+            <div className="skeleton" style={{ height: 44 }} />
+          </div>
+        )}
+
+        {ticket && (
+          <div className="grid" style={{ marginTop: 20, gap: 20 }}>
+            <div className="card validator">
+              <div className="row between wrap">
+                <div className="row">
+                  <div className="stat-icon" style={{ width: 40, height: 40 }}><ShieldCheck size={20} /></div>
+                  <div>
+                    <h3 style={{ fontSize: 16 }}>Gate simulator</h3>
+                    <p className="muted" style={{ fontSize: 13 }}>
+                      {ticket.status === 'active' && 'Ready for entry scan.'}
+                      {ticket.status === 'entry_done' && 'Entry recorded. Scan at exit to complete the journey.'}
+                      {ticket.status === 'completed' && 'Journey completed. This ticket cannot be reused.'}
+                      {ticket.status === 'expired' && 'This ticket has expired and can no longer be used.'}
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={refresh} disabled={!!busy}>
+                  {busy === 'refresh' ? <Spinner size={14} /> : <RefreshCw size={14} />} Refresh
+                </button>
+              </div>
+              <div className="validator-actions">
+                <button type="button" className="btn btn-primary" onClick={() => scan('entry')} disabled={!!busy || finished}>
+                  {busy === 'entry' ? <Spinner /> : <LogIn size={18} />} Scan entry
+                </button>
+                <button type="button" className="btn btn-success" onClick={() => scan('exit')} disabled={!!busy || finished}>
+                  {busy === 'exit' ? <Spinner /> : <LogOut size={18} />} Scan exit
+                </button>
+              </div>
+            </div>
+            <TicketCard ticket={ticket} />
+          </div>
+        )}
+
+        {!ticket && !loading && !msg && recent.length === 0 && (
+          <div className="empty">
+            <div className="empty-icon"><Ticket size={26} /></div>
+            <p>No ticket loaded yet. <Link to="/book" style={{ color: 'var(--primary)', fontWeight: 600 }}>Book a ticket</Link> or paste an ID above.</p>
+          </div>
+        )}
       </div>
-
-      {msg.text && (
-        <div style={{ marginTop:8, padding:12, borderRadius:8,
-          background:msg.type==='error' ? '#3d1f1f' : '#1a3d1f',
-          color:msg.type==='error' ? '#e74c3c' : '#2ecc71', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
-          {msg.type==='error' ? <XCircle size={16} /> : <CheckCircle size={16} />}
-          {msg.text}
-        </div>
-      )}
-
-      {ticket && (
-        <div style={{ marginTop:20, padding:24, borderRadius:12, background:'#1a1a2e', border:`2px solid ${statusColor(ticket.status)}` }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-            <h3 style={{ margin:0, color:'#fff', fontSize:18 }}>Ticket Details</h3>
-            <span style={{ padding:'4px 12px', borderRadius:20, fontSize:12, fontWeight:600,
-              background:statusColor(ticket.status)+'33', color:statusColor(ticket.status) }}>
-              {ticket.status.toUpperCase()}
-            </span>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-            <div style={{ padding:12, background:'#0f0f23', borderRadius:8 }}>
-              <div style={{ fontSize:11, color:'#666', marginBottom:4 }}>FROM</div>
-              <div style={{ color:'#fff', fontWeight:600 }}>{ticket.sourceStation}</div>
-            </div>
-            <div style={{ padding:12, background:'#0f0f23', borderRadius:8 }}>
-              <div style={{ fontSize:11, color:'#666', marginBottom:4 }}>TO</div>
-              <div style={{ color:'#fff', fontWeight:600 }}>{ticket.destinationStation}</div>
-            </div>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-            <div style={{ padding:12, background:'#0f0f23', borderRadius:8 }}>
-              <div style={{ fontSize:11, color:'#666', marginBottom:4 }}>FARE</div>
-              <div style={{ color:'#e94560', fontWeight:700, fontSize:20 }}>₹{ticket.fare}</div>
-            </div>
-            <div style={{ padding:12, background:'#0f0f23', borderRadius:8 }}>
-              <div style={{ fontSize:11, color:'#666', marginBottom:4 }}>TICKET ID</div>
-              <div style={{ color:'#fff', fontFamily:'monospace', fontSize:11, wordBreak:'break-all' }}>{ticket.ticketId}</div>
-            </div>
-          </div>
-
-          {[
-            { label:'Booked', icon: Clock, value: ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : '—' },
-            { label:'Expires', icon: Clock, value: ticket.expiresAt ? new Date(ticket.expiresAt).toLocaleString() : '—' },
-            { label:'Entry', icon: ArrowRight, value: ticket.entryUsed ? `✅ ${new Date(ticket.entryUsedAt).toLocaleString()}` : '⏳ Pending' },
-            { label:'Exit', icon: LogOut, value: ticket.exitUsed ? `✅ ${new Date(ticket.exitUsedAt).toLocaleString()}` : '⏳ Pending' }
-          ].map(item => (
-            <div key={item.label} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 0', borderBottom:'1px solid #222' }}>
-              <item.icon size={14} color="#666" />
-              <span style={{ color:'#888', fontSize:13, width:60 }}>{item.label}</span>
-              <span style={{ color:'#ccc', fontSize:13 }}>{item.value}</span>
-            </div>
-          ))}
-
-          <div style={{ display:'flex', gap:12, marginTop:20 }}>
-            <button onClick={() => action(api.entry)} disabled={loading || ticket.entryUsed} style={{
-              flex:1, padding:'10px', background:ticket.entryUsed ? '#555' : '#2ecc71', color:'#fff', border:'none',
-              borderRadius:8, fontWeight:600, fontSize:13, cursor:loading || ticket.entryUsed ? 'wait' : 'pointer'
-            }}>
-              {ticket.entryUsed ? 'Entry Done' : 'Validate Entry'}
-            </button>
-            <button onClick={() => action(api.exit)} disabled={loading || !ticket.entryUsed || ticket.exitUsed} style={{
-              flex:1, padding:'10px', background:ticket.exitUsed || !ticket.entryUsed ? '#555' : '#3498db', color:'#fff', border:'none',
-              borderRadius:8, fontWeight:600, fontSize:13, cursor:loading || !ticket.entryUsed || ticket.exitUsed ? 'wait' : 'pointer'
-            }}>
-              {ticket.exitUsed ? 'Exit Done' : ticket.entryUsed ? 'Validate Exit' : 'Entry First'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,60 +1,85 @@
-import { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { TrainFront, MapPin, Ticket, Search, MessageCircle, HelpCircle, Home } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
+import { TrainFront, MapPin, Ticket, ScanLine, HelpCircle, Home, Menu, X, Mail, Phone, Clock, ShieldCheck, LogIn, LogOut, Ban, Search } from 'lucide-react';
 import HomeView from './pages/HomeView';
 import BookingView from './pages/BookingView';
 import StationsView from './pages/StationsView';
 import CheckTicketView from './pages/CheckTicketView';
 import ChatWidget from './components/ChatWidget';
+import { PageHeader } from './components/ui';
 
 const NAV = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/book', label: 'Book Ticket', icon: Ticket },
   { to: '/stations', label: 'Stations', icon: MapPin },
-  { to: '/check', label: 'Check Ticket', icon: Search },
+  { to: '/check', label: 'Check Ticket', icon: ScanLine },
   { to: '/help', label: 'Help', icon: HelpCircle }
 ];
 
-function NavBar() {
-  const loc = useLocation();
+function Brand() {
   return (
-    <nav style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 32px', background:'#1a1a2e', borderBottom:'3px solid #e94560' }}>
-      <Link to="/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none', color:'#fff' }}>
-        <TrainFront size={28} color="#e94560" />
-        <span style={{ fontWeight:800, fontSize:20 }}>Bengaluru Metro</span>
-      </Link>
-      <div style={{ display:'flex', gap:24 }}>
-        {NAV.map(n => (
-          <Link key={n.to} to={n.to} style={{
-            display:'flex', alignItems:'center', gap:6, textDecoration:'none',
-            color: loc.pathname === n.to ? '#e94560' : '#ccc',
-            fontWeight: loc.pathname === n.to ? 700 : 500, fontSize:14,
-            borderBottom: loc.pathname === n.to ? '2px solid #e94560' : '2px solid transparent',
-            paddingBottom:4, transition:'all .2s'
-          }}>
-            <n.icon size={16} />
-            {n.label}
-          </Link>
-        ))}
-      </div>
-    </nav>
+    <Link to="/" className="brand" aria-label="Bengaluru Metro home">
+      <span className="brand-mark"><TrainFront size={20} /></span>
+      <span>
+        <div className="brand-name">Bengaluru Metro</div>
+        <div className="brand-sub">Digital Ticketing</div>
+      </span>
+    </Link>
   );
+}
+
+function NavBar() {
+  const [open, setOpen] = useState(false);
+  const loc = useLocation();
+  useEffect(() => { setOpen(false); }, [loc.pathname]);
+
+  const links = NAV.map(n => (
+    <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+      <n.icon size={16} /> {n.label}
+    </NavLink>
+  ));
+
+  return (
+    <header className="nav">
+      <div className="container nav-inner">
+        <Brand />
+        <nav className="nav-links" aria-label="Main">
+          {links}
+          <Link to="/book" className="btn btn-primary btn-sm nav-cta"><Ticket size={15} /> Book now</Link>
+        </nav>
+        <button className="nav-toggle" onClick={() => setOpen(o => !o)} aria-label="Toggle menu" aria-expanded={open}>
+          {open ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+      {open && <nav className="mobile-menu" aria-label="Mobile">{links}</nav>}
+    </header>
+  );
+}
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
 }
 
 export default function App() {
   return (
     <BrowserRouter>
-      <div style={{ minHeight:'100vh', background:'#0f0f23', color:'#e0e0e0' }}>
+      <ScrollToTop />
+      <div className="app">
         <NavBar />
-        <Routes>
-          <Route path="/" element={<HomeView />} />
-          <Route path="/book" element={<BookingView />} />
-          <Route path="/stations" element={<StationsView />} />
-          <Route path="/check" element={<CheckTicketView />} />
-          <Route path="/help" element={<HelpView />} />
-        </Routes>
-        <ChatWidget />
+        <main className="main">
+          <Routes>
+            <Route path="/" element={<HomeView />} />
+            <Route path="/book" element={<BookingView />} />
+            <Route path="/stations" element={<StationsView />} />
+            <Route path="/check" element={<CheckTicketView />} />
+            <Route path="/help" element={<HelpView />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
         <Footer />
+        <ChatWidget />
       </div>
     </BrowserRouter>
   );
@@ -62,60 +87,91 @@ export default function App() {
 
 function Footer() {
   return (
-    <footer style={{ background:'#1a1a2e', padding:'40px 32px 24px', borderTop:'1px solid #333', marginTop:60 }}>
-      <div style={{ maxWidth:1100, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:32 }}>
-        <div>
-          <h3 style={{ color:'#e94560', marginBottom:12 }}>Bengaluru Metro</h3>
-          <p style={{ fontSize:13, color:'#888', lineHeight:1.6 }}>Fast, reliable, digital metro ticket booking for Bengaluru commuters.</p>
+    <footer className="footer">
+      <div className="container">
+        <div className="footer-grid">
+          <div>
+            <div className="row" style={{ marginBottom: 14 }}>
+              <span className="brand-mark"><TrainFront size={20} /></span>
+              <span className="brand-name">Bengaluru Metro</span>
+            </div>
+            <p style={{ maxWidth: 300 }}>Fast, reliable, digital metro ticket booking for Bengaluru commuters.</p>
+          </div>
+          <div>
+            <h4>Travel</h4>
+            <Link to="/book">Book Ticket</Link>
+            <Link to="/stations">Station Directory</Link>
+            <Link to="/check">Check Ticket</Link>
+          </div>
+          <div>
+            <h4>Help</h4>
+            <Link to="/help">How it works</Link>
+            <Link to="/help">Ticket rules</Link>
+          </div>
+          <div>
+            <h4>Support</h4>
+            <div className="footer-contact"><Mail size={15} /> support@bmml.com</div>
+            <div className="footer-contact"><Phone size={15} /> 1800-123-4567</div>
+          </div>
         </div>
-        <div>
-          <h4 style={{ color:'#aaa', marginBottom:12 }}>Quick Links</h4>
-          {[['Book Ticket','/book'],['Stations','/stations'],['Check Ticket','/check']].map(([l,p]) => (
-            <Link key={p} to={p} style={{ display:'block', color:'#666', fontSize:13, textDecoration:'none', marginBottom:6 }}>{l}</Link>
-          ))}
+        <div className="footer-bottom">
+          <span>© 2026 Bengaluru Metro Ticket Booking System. All rights reserved.</span>
+          <span>Built with React, Express, MongoDB & Claude</span>
         </div>
-        <div>
-          <h4 style={{ color:'#aaa', marginBottom:12 }}>Support</h4>
-          <p style={{ fontSize:13, color:'#666', lineHeight:1.6 }}>Email: support@bmml.com<br />Phone: 1800-123-4567</p>
-        </div>
-      </div>
-      <div style={{ textAlign:'center', marginTop:32, paddingTop:20, borderTop:'1px solid #222', fontSize:12, color:'#555' }}>
-        © 2026 Bengaluru Metro Ticket Booking System. All rights reserved.
       </div>
     </footer>
   );
 }
 
 function HelpView() {
+  const steps = [
+    { icon: MapPin, title: 'Select your stations', desc: 'Choose source and destination on the Book Ticket page. You can search by name, line or station ID.' },
+    { icon: Search, title: 'Review your fare', desc: 'The server calculates the fare as the price difference between the two stations.' },
+    { icon: Ticket, title: 'Book your ticket', desc: 'Confirm the booking to receive a digital ticket with a unique ID and QR code.' },
+    { icon: LogIn, title: 'Entry scan', desc: 'At the station, scan your ticket at the entry gate (or use the Check Ticket page to simulate it).' },
+    { icon: LogOut, title: 'Exit scan', desc: 'After your journey, scan again at the exit gate to complete the trip.' }
+  ];
+  const rules = [
+    { icon: Clock, text: 'Tickets are valid for 18 hours from booking.' },
+    { icon: ShieldCheck, text: 'Two scans per ticket: entry first, then exit.' },
+    { icon: Ban, text: 'Exit before entry is rejected, and each scan works only once.' },
+    { icon: Ban, text: 'Completed or expired tickets cannot be reused.' }
+  ];
   return (
-    <div style={{ maxWidth:800, margin:'0 auto', padding:40 }}>
-      <h2 style={{ color:'#e94560', marginBottom:24 }}>How It Works</h2>
-      {[
-        { step: '1', title: 'Select Your Stations', desc: 'Choose your source and destination stations from the dropdowns on the Book Ticket page.' },
-        { step: '2', title: 'Calculate Your Fare', desc: 'The system automatically calculates the fare based on the price difference between stations.' },
-        { step: '3', title: 'Book Your Ticket', desc: 'Confirm the booking to receive a digital ticket with a unique ID.' },
-        { step: '4', title: 'Entry Scan', desc: 'At the metro station, show your ticket ID at the entry kiosk for validation.' },
-        { step: '5', title: 'Exit Scan', desc: 'After your journey, scan again at the exit kiosk to complete the trip.' }
-      ].map(item => (
-        <div key={item.step} style={{ display:'flex', gap:16, marginBottom:24, alignItems:'flex-start' }}>
-          <div style={{ minWidth:40, height:40, borderRadius:'50%', background:'#e94560', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:18 }}>
-            {item.step}
-          </div>
-          <div>
-            <h3 style={{ margin:'0 0 4px', color:'#fff' }}>{item.title}</h3>
-            <p style={{ margin:0, fontSize:14, color:'#888', lineHeight:1.5 }}>{item.desc}</p>
-          </div>
+    <div className="page">
+      <div className="container container-sm">
+        <PageHeader eyebrow="Help centre" icon={HelpCircle} title="How it works" subtitle="Everything you need to know about booking and using your digital metro ticket." />
+        <div className="help-steps">
+          {steps.map((s, i) => (
+            <div key={s.title} className="card help-step">
+              <div className="step-num"><s.icon size={20} /></div>
+              <div>
+                <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>STEP {i + 1}</div>
+                <h3 style={{ fontSize: 17, margin: '2px 0 4px' }}>{s.title}</h3>
+                <p className="muted" style={{ fontSize: 14 }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
-      <div style={{ marginTop:40, padding:24, background:'#16213e', borderRadius:12, border:'1px solid #333' }}>
-        <h3 style={{ color:'#e94560', marginTop:0 }}>Ticket Rules</h3>
-        <ul style={{ fontSize:14, color:'#888', lineHeight:1.8, paddingLeft:20 }}>
-          <li>Tickets are valid for 18 hours from booking.</li>
-          <li>Two scans per ticket: entry first, then exit.</li>
-          <li>No exit before entry.</li>
-          <li>Once completed, a ticket cannot be reused.</li>
-          <li>Use the "Check Ticket" page to validate entry/exit.</li>
-        </ul>
+        <div className="card card-pad" style={{ marginTop: 24 }}>
+          <h3 style={{ fontSize: 18, marginBottom: 16 }}>Ticket rules</h3>
+          <ul className="info-list">
+            {rules.map(r => <li key={r.text}><r.icon size={18} /> {r.text}</li>)}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="page">
+      <div className="container container-sm empty">
+        <div className="empty-icon"><MapPin size={26} /></div>
+        <h1 className="page-title" style={{ marginBottom: 10 }}>Page not found</h1>
+        <p style={{ marginBottom: 20 }}>This stop doesn't exist on our network.</p>
+        <Link to="/" className="btn btn-primary">Back to home</Link>
       </div>
     </div>
   );

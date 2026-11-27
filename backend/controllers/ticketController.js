@@ -1,93 +1,68 @@
 import * as ticketSvc from '../services/ticketService.js';
-import * as stationSvc from '../services/stationService.js';
+
+function sendError(res, err, fallback) {
+  if (err instanceof ticketSvc.TicketError) {
+    return res.status(err.status).json({ success: false, error: err.message, code: err.code });
+  }
+  console.error(`${fallback}:`, err.message);
+  return res.status(500).json({ success: false, error: fallback });
+}
 
 export async function calculateFare(req, res) {
   try {
-    const { sourceStationId, destinationStationId } = req.body;
-
-    if (!sourceStationId || !destinationStationId) {
-      return res.status(400).json({ success: false, error: 'Both sourceStationId and destinationStationId are required' });
-    }
-
-    const source = await stationSvc.getStationById(sourceStationId);
-    if (!source) return res.status(400).json({ success: false, error: 'Invalid source station' });
-
-    const dest = await stationSvc.getStationById(destinationStationId);
-    if (!dest) return res.status(400).json({ success: false, error: 'Invalid destination station' });
-
-    if (sourceStationId === destinationStationId) {
-      return res.status(400).json({ success: false, error: 'Source and destination cannot be the same' });
-    }
-
-    const fare = ticketSvc.calculateFare(source, dest);
-
+    const { sourceStationId, destinationStationId } = req.body || {};
+    const { source, dest, fare } = await ticketSvc.quoteFare(sourceStationId, destinationStationId);
     res.json({
       success: true,
       data: {
-        sourceStationId,
+        sourceStationId: source.stationId,
         sourceStationName: source.name,
-        destinationStationId,
+        sourceLine: source.line,
+        destinationStationId: dest.stationId,
         destinationStationName: dest.name,
+        destinationLine: dest.line,
         fare
       }
     });
-  } catch {
-    res.status(500).json({ success: false, error: 'Fare calculation failed' });
+  } catch (err) {
+    sendError(res, err, 'Fare calculation failed');
   }
 }
 
 export async function createTicket(req, res) {
   try {
-    const { sourceStationId, destinationStationId } = req.body;
-
-    if (!sourceStationId || !destinationStationId) {
-      return res.status(400).json({ success: false, error: 'Both source and destination are required' });
-    }
-
+    const { sourceStationId, destinationStationId } = req.body || {};
     const ticket = await ticketSvc.createTicket(sourceStationId, destinationStationId);
     res.status(201).json({ success: true, data: ticket });
   } catch (err) {
-    const msg = err.message || 'Booking failed';
-    if (msg.includes('Invalid') || msg.includes('same')) {
-      return res.status(400).json({ success: false, error: msg });
-    }
-    res.status(500).json({ success: false, error: 'Ticket booking failed' });
+    sendError(res, err, 'Ticket booking failed');
   }
 }
 
 export async function getTicketById(req, res) {
   try {
-    const { ticketId } = req.params;
-    const ticket = await ticketSvc.getTicket(ticketId);
-
-    if (!ticket) return res.status(404).json({ success: false, error: 'Ticket not found' });
-
+    const ticket = await ticketSvc.getTicket(req.params.ticketId);
+    if (!ticket) return res.status(404).json({ success: false, error: 'Ticket not found', code: 'NOT_FOUND' });
     res.json({ success: true, data: ticket });
-  } catch {
-    res.status(500).json({ success: false, error: 'Failed to retrieve ticket' });
+  } catch (err) {
+    sendError(res, err, 'Failed to retrieve ticket');
   }
 }
 
 export async function validateEntry(req, res) {
   try {
-    const { ticketId } = req.params;
-    const ticket = await ticketSvc.validateEntry(ticketId);
+    const ticket = await ticketSvc.validateEntry(req.params.ticketId);
     res.json({ success: true, data: ticket, message: 'Entry validated successfully' });
   } catch (err) {
-    const msg = err.message || 'Entry validation failed';
-    const status = msg.includes('not found') || msg.includes('expired') ? 400 : 500;
-    res.status(status).json({ success: false, error: msg });
+    sendError(res, err, 'Entry validation failed');
   }
 }
 
 export async function validateExit(req, res) {
   try {
-    const { ticketId } = req.params;
-    const ticket = await ticketSvc.validateExit(ticketId);
+    const ticket = await ticketSvc.validateExit(req.params.ticketId);
     res.json({ success: true, data: ticket, message: 'Exit validated successfully' });
   } catch (err) {
-    const msg = err.message || 'Exit validation failed';
-    const status = msg.includes('not found') || msg.includes('expired') ? 400 : 500;
-    res.status(status).json({ success: false, error: msg });
+    sendError(res, err, 'Exit validation failed');
   }
 }

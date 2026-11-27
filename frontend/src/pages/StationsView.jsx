@@ -1,62 +1,103 @@
-import { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { Search, MapPin, ArrowRight, X } from 'lucide-react';
 import { api } from '../services/api';
+import { Alert, PageHeader } from '../components/ui';
+import { lineColor } from '../lib/metro';
 
 export default function StationsView() {
   const [stations, setStations] = useState([]);
+  const [state, setState] = useState('loading');
+  const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [line, setLine] = useState('All');
 
-  useEffect(() => {
-    api.getStations().then(r => { setStations(r.data); setLoading(false); })
-      .catch(() => setLoading(false));
+  const load = useCallback(() => {
+    setState('loading');
+    api.getStations()
+      .then(r => { setStations(r.data); setState('ready'); })
+      .catch(e => { setError(e.message); setState('error'); });
   }, []);
 
-  const filtered = filter ? stations.filter(s =>
-    s.name.toLowerCase().includes(filter.toLowerCase()) ||
-    s.line.toLowerCase().includes(filter.toLowerCase()) ||
-    s.stationId.toLowerCase().includes(filter.toLowerCase())
-  ) : stations;
+  useEffect(load, [load]);
 
-  const lineColors = { 'Purple Line':'#9b59b6', 'Blue Line':'#3498db', 'Green Line':'#2ecc71', 'Red Line':'#e74c3c', 'Orange Line':'#f39c12' };
+  const lines = useMemo(() => ['All', ...new Set(stations.map(s => s.line))], [stations]);
 
-  if (loading) return <div style={{ padding:40, textAlign:'center', color:'#888' }}>Loading stations...</div>;
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return stations.filter(s =>
+      (line === 'All' || s.line === line) &&
+      (!q || s.name.toLowerCase().includes(q) || s.line.toLowerCase().includes(q) || s.stationId.toLowerCase().includes(q))
+    );
+  }, [stations, filter, line]);
 
   return (
-    <div style={{ maxWidth:900, margin:'0 auto', padding:32 }}>
-      <h2 style={{ color:'#fff', fontSize:28, marginBottom:24 }}>Metro Stations</h2>
-      <div style={{ position:'relative', marginBottom:24 }}>
-        <Search size={18} color="#666" style={{ position:'absolute', left:14, top:14 }} />
-        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search by name, line, or ID..." style={{
-          width:'100%', padding:'12px 16px 12px 40px', background:'#16213e', color:'#fff', border:'1px solid #333',
-          borderRadius:8, fontSize:14, outline:'none'
-        }} />
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
-        {filtered.map(s => (
-          <div key={s.stationId} style={{
-            padding:16, borderRadius:10, background:'#16213e', border:'1px solid #222',
-            borderLeft:`4px solid ${lineColors[s.line] || '#666'}`, transition:'all .2s'
-          }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'start' }}>
-              <div>
-                <div style={{ fontWeight:600, color:'#fff', fontSize:15 }}>{s.name}</div>
-                <div style={{ fontSize:12, color:'#888', marginTop:2 }}>
-                  <span style={{
-                    display:'inline-block', padding:'2px 8px', borderRadius:12, fontSize:11,
-                    background:lineColors[s.line] + '33', color:lineColors[s.line], fontWeight:600
-                  }}>{s.line}</span>
-                </div>
-              </div>
-              <div style={{ fontWeight:700, color:'#e94560', fontSize:16 }}>₹{s.price}</div>
-            </div>
-            <div style={{ fontSize:11, color:'#555', marginTop:8 }}>ID: {s.stationId}</div>
+    <div className="page">
+      <div className="container">
+        <PageHeader eyebrow="Station directory" icon={MapPin} title="All metro stations" subtitle="Live station data from the server. Pick any station to start a booking from it." />
+
+        <div className="filters">
+          <div className="input-icon">
+            <Search size={18} />
+            <input className="input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search by name, line or station ID…" aria-label="Search stations" />
           </div>
-        ))}
+          <div className="row wrap" style={{ gap: 8 }}>
+            {lines.map(l => (
+              <button type="button" key={l} className={`chip ${line === l ? 'active' : ''}`} onClick={() => setLine(l)}>
+                {l !== 'All' && <span className="line-dot" style={{ background: line === l ? '#fff' : lineColor(l) }} />}
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {state === 'error' && (
+          <Alert type="error" title="Couldn't load stations" action={<button className="btn btn-secondary btn-sm" onClick={load}>Retry</button>}>{error}</Alert>
+        )}
+
+        {state === 'loading' && (
+          <div className="station-grid">
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton" style={{ height: 118 }} />)}
+          </div>
+        )}
+
+        {state === 'ready' && (
+          <>
+            {filtered.length === 0 ? (
+              <div className="empty card">
+                <div className="empty-icon"><Search size={24} /></div>
+                <p style={{ marginBottom: 14 }}>No stations match your search.</p>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setFilter(''); setLine('All'); }}><X size={14} /> Clear filters</button>
+              </div>
+            ) : (
+              <div className="station-grid">
+                {filtered.map(s => (
+                  <div key={s.stationId} className="card card-hover station-card" style={{ '--line-color': lineColor(s.line) }}>
+                    <div className="row between" style={{ alignItems: 'flex-start' }}>
+                      <div>
+                        <div className="name">{s.name}</div>
+                        <div className="id">{s.stationId}</div>
+                      </div>
+                      <span className="price-tag">₹{s.price}</span>
+                    </div>
+                    <div className="row between">
+                      <span className="line-pill" style={{ background: `${lineColor(s.line)}14`, color: lineColor(s.line), borderColor: `${lineColor(s.line)}33` }}>
+                        <span className="line-dot" style={{ background: lineColor(s.line), width: 8, height: 8 }} />{s.line}
+                      </span>
+                      <Link to={`/book?from=${s.stationId}`} className="btn btn-ghost btn-sm" style={{ color: 'var(--primary)' }}>
+                        Book from <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="muted" style={{ fontSize: 13, textAlign: 'center', marginTop: 24 }}>
+              Showing {filtered.length} of {stations.length} stations · Station price is used to compute fares
+            </p>
+          </>
+        )}
       </div>
-      <p style={{ color:'#555', fontSize:13, textAlign:'center', marginTop:16 }}>
-        Showing {filtered.length} of {stations.length} stations
-      </p>
     </div>
   );
 }

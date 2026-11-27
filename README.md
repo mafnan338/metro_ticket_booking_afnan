@@ -12,6 +12,28 @@ A complete, professional metro ticket booking system built with React, Node.js/E
 - **AI Chatbot** — LangChain + Anthropic Claude with real backend tools
 - **Responsive UI** — modern, metro-themed design
 
+## Application Screenshots
+
+Captured from the running application (1440 × 900) with live backend and MongoDB data.
+
+### Homepage
+![Metro Homepage](screenshots/01-homepage.png)
+
+### Station selection
+![Station Selection](screenshots/02-station-selection.png)
+
+### Fare calculation
+![Fare Calculation](screenshots/03-fare-calculation.png)
+
+### Ticket confirmation
+![Ticket Confirmation](screenshots/04-ticket-confirmation.png)
+
+### Digital ticket
+![Digital Ticket](screenshots/05-digital-ticket.png)
+
+### Entry and exit validation
+![Ticket Validation](screenshots/06-ticket-validation.png)
+
 ## Technology Stack
 
 | Layer | Technology |
@@ -45,12 +67,15 @@ backend/           Express API (port 8000)
 ```env
 NODE_ENV=development
 PORT=8000
-DATABASE=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/metro_tickets
-DATABASE_PASSWORD=<your_password>
+# Local MongoDB or Atlas
+DATABASE=mongodb://127.0.0.1:27017/metro_tickets
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-haiku-20240307
+ANTHROPIC_MODEL=claude-sonnet-4-5
+ANTHROPIC_TIMEOUT_MS=30000
 CLIENT_URL=http://localhost:5173
 ```
+
+`config.env` is git-ignored. The API key is only read by the backend and is never sent to the browser.
 
 ### 2. Install Backend
 
@@ -98,7 +123,10 @@ App runs on `http://localhost:5173`
 | POST | `/api/tickets/:ticketId/entry` | Validate entry |
 | POST | `/api/tickets/:ticketId/exit` | Validate exit |
 | POST | `/api/chat` | AI chatbot (body: `{ message, sessionId }`) |
-| GET | `/api/health` | Health check |
+| POST | `/api/chat/reset` | Clear a chat session (body: `{ sessionId }`) |
+| GET | `/api/health` | Health check (DB + chatbot status) |
+
+Validation errors return `{ success: false, error, code }` with `400` (bad input), `404` (not found), `409` (duplicate scan / exit before entry / reuse) or `410` (expired).
 
 ## Fare Formula
 
@@ -115,17 +143,32 @@ fare = |destination.price - source.price|
 
 ## AI Chatbot Tools
 
+Built with `@langchain/anthropic` (`ChatAnthropic.bindTools`) and `@langchain/core` tools (zod schemas). Every tool calls the same backend services / MongoDB as the REST API.
+
 - `get_stations` — list all stations
-- `search_station` — search by name
-- `calculate_fare` — fare between two stations
-- `book_ticket` — book after explicit confirmation
+- `search_station` — search by name, ID or line
+- `calculate_fare` — fare between two stations (IDs or names)
+- `prepare_booking` — step 1: validate stations and quote the real fare (does not book)
+- `confirm_booking` — step 2: books the quoted ticket. The server refuses unless a quote is pending, it was made in an earlier turn, and the user's latest message is an explicit confirmation
+- `cancel_pending_booking` — discard the quote
 - `get_ticket_status` — lookup ticket
 - `validate_ticket_entry` — entry scan
 - `validate_ticket_exit` — exit scan
 
+Missing/invalid keys, unknown models, rate limits, overload and timeouts return clear errors (HTTP 503/502/429/504) that the chat UI shows with a retry button.
+
+## Tests
+
+```bash
+cd backend
+npm test
+```
+
+Requires a local MongoDB on `127.0.0.1:27017` (tests use throwaway `metro_test*` databases). `tests/chat.test.js` exercises the real LangChain → Anthropic SDK path against a local mock of the Messages API, so it runs without an API key.
+
 ## Troubleshooting
 
 - **MongoDB connection fails**: Check `config.env` DATABASE URI
-- **Chatbot not working**: Verify `ANTHROPIC_API_KEY` is set
+- **Chatbot not working**: Verify `ANTHROPIC_API_KEY` is set, then restart the backend. `GET /api/health` shows `"chatbot": "configured"` when the key is loaded
 - **CORS errors**: Ensure `CLIENT_URL` matches frontend URL
 - **Stations not loading**: Check backend is running and DB is connected

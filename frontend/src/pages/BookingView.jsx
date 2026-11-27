@@ -1,159 +1,163 @@
-import { useState, useEffect } from 'react';
-import { ArrowDownUp, CheckCircle, XCircle, Clock, Copy, QrCode } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeftRight, ArrowRight, CircleDot, MapPin, Ticket, ShieldCheck, Clock, ScanLine, RotateCcw, Search, IndianRupee } from 'lucide-react';
 import { api } from '../services/api';
+import StationSelect from '../components/StationSelect';
+import TicketCard, { TicketPreview } from '../components/TicketCard';
+import { Alert, Spinner, PageHeader } from '../components/ui';
+import { lineColor, rememberTicket } from '../lib/metro';
 
 export default function BookingView() {
+  const [params] = useSearchParams();
   const [stations, setStations] = useState([]);
-  const [source, setSource] = useState('');
-  const [dest, setDest] = useState('');
-  const [fareData, setFareData] = useState(null);
+  const [stationsState, setStationsState] = useState('loading');
+  const [source, setSource] = useState(params.get('from') || '');
+  const [dest, setDest] = useState(params.get('to') || '');
+  const [fare, setFare] = useState(null);
+  const [fareLoading, setFareLoading] = useState(false);
+  const [booking, setBooking] = useState(false);
   const [ticket, setTicket] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState({ type: '', text: '' });
-  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    api.getStations().then(r => setStations(r.data)).catch(() => setMsg({ type:'error', text:'Failed to load stations' }));
+  const loadStations = useCallback(() => {
+    setStationsState('loading');
+    api.getStations()
+      .then(r => { setStations(r.data); setStationsState('ready'); })
+      .catch(e => { setError(e.message); setStationsState('error'); });
   }, []);
 
-  const swap = () => { const t = source; setSource(dest); setDest(t); };
+  useEffect(loadStations, [loadStations]);
 
-  const calcFare = async () => {
-    if (!source || !dest) return setMsg({ type:'error', text:'Select both stations' });
-    if (source === dest) return setMsg({ type:'error', text:'Source and destination must differ' });
-    setLoading(true); setMsg({});
-    try {
-      const r = await api.calculateFare({ sourceStationId: source, destinationStationId: dest });
-      setFareData(r.data);
-      setTicket(null);
-    } catch (e) { setMsg({ type:'error', text: e.message }); }
-    finally { setLoading(false); }
-  };
+  useEffect(() => {
+    setFare(null);
+    setError('');
+    if (!source || !dest) return;
+    if (source === dest) { setError('Source and destination must be different stations.'); return; }
+    let cancelled = false;
+    setFareLoading(true);
+    api.calculateFare({ sourceStationId: source, destinationStationId: dest })
+      .then(r => { if (!cancelled) setFare(r.data); })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setFareLoading(false); });
+    return () => { cancelled = true; };
+  }, [source, dest]);
+
+  const swap = () => { setSource(dest); setDest(source); };
 
   const book = async () => {
-    if (!source || !dest) return setMsg({ type:'error', text:'Select both stations' });
-    setLoading(true); setMsg({});
+    if (!fare) return;
+    setBooking(true);
+    setError('');
     try {
       const r = await api.bookTicket({ sourceStationId: source, destinationStationId: dest });
       setTicket(r.data);
-      setFareData(r.data);
-    } catch (e) { setMsg({ type:'error', text: e.message }); }
-    finally { setLoading(false); }
+      rememberTicket(r.data);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBooking(false);
+    }
   };
 
-  const copyId = () => {
-    if (!ticket) return;
-    navigator.clipboard.writeText(ticket.ticketId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const reset = () => { setTicket(null); setSource(''); setDest(''); setFare(null); setError(''); };
 
-  const lineColors = { 'Purple Line':'#9b59b6', 'Blue Line':'#3498db', 'Green Line':'#2ecc71', 'Red Line':'#e74c3c', 'Orange Line':'#f39c12' };
-
-  const stationSelect = (val, setter) => (
-    <select value={val} onChange={e => setter(e.target.value)} style={{
-      width:'100%', padding:'12px 16px', background:'#16213e', color:'#fff', border:'1px solid #333',
-      borderRadius:8, fontSize:14, outline:'none'
-    }}>
-      <option value="">Select station...</option>
-      {stations.map(s => (
-        <option key={s.stationId} value={s.stationId}>{s.name} ({s.line}) — Price: ₹{s.price}</option>
-      ))}
-    </select>
-  );
-
-  return (
-    <div style={{ maxWidth:800, margin:'0 auto', padding:32 }}>
-      <h2 style={{ color:'#fff', fontSize:28, marginBottom:32, textAlign:'center' }}>Book a Ticket</h2>
-
-      <div style={{ background:'#16213e', borderRadius:12, padding:28, border:'1px solid #222' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:16, alignItems:'end' }}>
-          <div>
-            <label style={{ display:'block', fontSize:12, color:'#888', marginBottom:6, textTransform:'uppercase', letterSpacing:1 }}>Source Station</label>
-            {stationSelect(source, setSource)}
+  if (ticket) {
+    return (
+      <div className="page">
+        <div className="container container-sm">
+          <PageHeader eyebrow="Booking confirmed" icon={ShieldCheck} title="Your ticket is ready" subtitle="Show the QR code or ticket ID at the entry gate. This ticket is stored on the server and valid for 18 hours." />
+          <div style={{ marginBottom: 20 }}>
+            <Alert type="success" title="Ticket booked successfully">Ticket ID {ticket.ticketId.slice(0, 8)}… was issued by the server.</Alert>
           </div>
-          <button onClick={swap} title="Swap" style={{
-            padding:12, background:'#1a1a2e', border:'1px solid #333', borderRadius:8, color:'#e94560',
-            cursor:'pointer', marginBottom:2, transition:'all .2s'
-          }}><ArrowDownUp size={20} /></button>
-          <div>
-            <label style={{ display:'block', fontSize:12, color:'#888', marginBottom:6, textTransform:'uppercase', letterSpacing:1 }}>Destination Station</label>
-            {stationSelect(dest, setDest)}
-          </div>
-        </div>
-
-        <div style={{ display:'flex', gap:12, marginTop:20 }}>
-          <button onClick={calcFare} disabled={loading || !source || !dest} style={{
-            flex:1, padding:'12px 24px', background:loading ? '#555' : '#2c3e50', color:'#fff', border:'none',
-            borderRadius:8, fontWeight:600, fontSize:14, cursor:loading ? 'wait' : 'pointer'
-          }}>
-            {loading ? 'Calculating...' : 'Calculate Fare'}
-          </button>
-          <button onClick={book} disabled={loading || !fareData} style={{
-            flex:1, padding:'12px 24px', background:loading || !fareData ? '#555' : '#e94560', color:'#fff', border:'none',
-            borderRadius:8, fontWeight:600, fontSize:14, cursor:(loading || !fareData) ? 'wait' : 'pointer'
-          }}>
-            {loading ? 'Booking...' : 'Book Ticket'}
-          </button>
+          <TicketCard
+            ticket={ticket}
+            actions={
+              <>
+                <Link to={`/check?id=${ticket.ticketId}`} className="btn btn-primary" style={{ flex: 1 }}><ScanLine size={18} /> Validate / Check status</Link>
+                <button type="button" className="btn btn-secondary" onClick={reset} style={{ flex: 1 }}><RotateCcw size={18} /> Book another</button>
+              </>
+            }
+          />
         </div>
       </div>
+    );
+  }
 
-      {msg.text && (
-        <div style={{ marginTop:16, padding:14, borderRadius:8, background:msg.type==='error' ? '#3d1f1f' : '#1a3d1f',
-          color:msg.type==='error' ? '#e74c3c' : '#2ecc71', fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
-          {msg.type==='error' ? <XCircle size={18} /> : <CheckCircle size={18} />}
-          {msg.text}
-        </div>
-      )}
+  const srcStation = stations.find(s => s.stationId === source);
+  const dstStation = stations.find(s => s.stationId === dest);
 
-      {fareData && !ticket && (
-        <div style={{ marginTop:20, padding:20, borderRadius:12, background:'#1a1a2e', border:'1px solid #333' }}>
-          <h3 style={{ color:'#fff', margin:'0 0 12px', fontSize:16 }}>Fare Summary</h3>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, marginBottom:8 }}>
-            <span style={{ color:'#888' }}>From</span><span style={{ color:'#fff' }}>{fareData.sourceStationName}</span>
-          </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, marginBottom:8 }}>
-            <span style={{ color:'#888' }}>To</span><span style={{ color:'#fff' }}>{fareData.destinationStationName}</span>
-          </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:18, fontWeight:700, paddingTop:12, borderTop:'1px solid #333' }}>
-            <span style={{ color:'#888' }}>Fare</span><span style={{ color:'#e94560' }}>₹{fareData.fare}</span>
-          </div>
-        </div>
-      )}
+  return (
+    <div className="page">
+      <div className="container">
+        <PageHeader eyebrow="Book a ticket" icon={Ticket} title="Plan your journey" subtitle="Choose your stations. Fares are calculated live by the server before you book." />
 
-      {ticket && (
-        <div style={{ marginTop:20, padding:24, borderRadius:12, background:'#1a1a2e', border:'2px solid #2ecc71', position:'relative' }}>
-          <div style={{ position:'absolute', top:12, right:12, display:'flex', gap:8 }}>
-            <button onClick={copyId} style={{ padding:6, background:'#333', border:'none', borderRadius:4, color:'#fff', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', gap:4 }}>
-              <Copy size={12} /> {copied ? 'Copied!' : 'Copy ID'}
-            </button>
-          </div>
-          <div style={{ textAlign:'center', marginBottom:16 }}>
-            <QrCode size={80} color="#e94560" style={{ margin:'0 auto', display:'block' }} />
-            <p style={{ fontSize:11, color:'#666', marginTop:8 }}>QR Code is decorative. Validate with ticket ID.</p>
-          </div>
-          <div style={{ textAlign:'center', marginBottom:16 }}>
-            <span style={{ display:'inline-block', padding:'4px 12px', borderRadius:20, fontSize:12, fontWeight:600,
-              background:ticket.status==='completed' ? '#2ecc71' : ticket.status==='expired' ? '#e74c3c' : '#3498db', color:'#fff' }}>
-              {ticket.status.toUpperCase()}
-            </span>
-          </div>
-          {[
-            ['Ticket ID', ticket.ticketId],
-            ['From', ticket.sourceStation],
-            ['To', ticket.destinationStation],
-            ['Fare', `₹${ticket.fare}`],
-            ['Booked', new Date(ticket.createdAt).toLocaleString()],
-            ['Expires', new Date(ticket.expiresAt).toLocaleString()],
-            ['Entry', ticket.entryUsed ? `✅ ${new Date(ticket.entryUsedAt).toLocaleString()}` : 'Not used'],
-            ['Exit', ticket.exitUsed ? `✅ ${new Date(ticket.exitUsedAt).toLocaleString()}` : 'Not used']
-          ].map(([l,v]) => (
-            <div key={l} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #222', fontSize:13 }}>
-              <span style={{ color:'#888' }}>{l}</span><span style={{ color:'#fff', fontFamily:'monospace' }}>{v}</span>
+        <div className="booking-grid">
+          <section className="card card-pad">
+            {stationsState === 'error' ? (
+              <Alert type="error" title="Couldn't load stations" action={<button className="btn btn-secondary btn-sm" onClick={loadStations}>Retry</button>}>{error}</Alert>
+            ) : (
+              <>
+                <div className="route-fields">
+                  <StationSelect id="source" label="From" icon={CircleDot} stations={stations} value={source} onChange={setSource} disabledId={dest} disabled={stationsState !== 'ready'} placeholder="Select source station" />
+                  <button type="button" className="swap-btn" onClick={swap} disabled={!source && !dest} title="Swap stations" aria-label="Swap stations">
+                    <ArrowLeftRight size={18} />
+                  </button>
+                  <StationSelect id="destination" label="To" icon={MapPin} stations={stations} value={dest} onChange={setDest} disabledId={source} disabled={stationsState !== 'ready'} placeholder="Select destination" />
+                </div>
+
+                {error && stationsState === 'ready' && <div style={{ marginTop: 18 }}><Alert type="error">{error}</Alert></div>}
+
+                {fareLoading && (
+                  <div className="fare-box row" style={{ color: 'var(--primary)' }}><Spinner /> Calculating fare…</div>
+                )}
+
+                {fare && !fareLoading && (
+                  <div className="fare-box">
+                    <div className="fare-route">
+                      <div className="fare-station">
+                        <div className="name">{fare.sourceStationName}</div>
+                        <div className="sub row" style={{ gap: 6 }}><span className="line-dot" style={{ background: lineColor(srcStation?.line) }} />{fare.sourceLine || srcStation?.line}</div>
+                      </div>
+                      <ArrowRight size={20} className="fare-arrow" />
+                      <div className="fare-station" style={{ textAlign: 'right' }}>
+                        <div className="name">{fare.destinationStationName}</div>
+                        <div className="sub row" style={{ gap: 6, justifyContent: 'flex-end' }}><span className="line-dot" style={{ background: lineColor(dstStation?.line) }} />{fare.destinationLine || dstStation?.line}</div>
+                      </div>
+                    </div>
+                    <div className="fare-total">
+                      <div>
+                        <div className="muted" style={{ fontSize: 13, fontWeight: 600 }}>Total fare</div>
+                        <div className="muted" style={{ fontSize: 12 }}>Single journey · valid 18 hours</div>
+                      </div>
+                      <div className="fare-amount">₹{fare.fare}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 22 }}>
+                  <button type="button" className="btn btn-primary btn-lg btn-block" onClick={book} disabled={!fare || booking || fareLoading}>
+                    {booking ? <><Spinner /> Booking your ticket…</> : fare ? <><Ticket size={18} /> Confirm & book · ₹{fare.fare}</> : <><Ticket size={18} /> Select stations to continue</>}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+
+          <aside className="grid" style={{ gap: 20 }}>
+            <TicketPreview />
+            <div className="card side-card">
+              <h3 style={{ fontSize: 16, marginBottom: 14 }}>Good to know</h3>
+              <ul className="info-list">
+                <li><IndianRupee size={18} /> Fare is the price difference between the two stations.</li>
+                <li><Clock size={18} /> Tickets are valid for 18 hours from booking.</li>
+                <li><ScanLine size={18} /> Scan once at entry and once at exit, in that order.</li>
+                <li><Search size={18} /> Track your ticket any time on the <Link to="/check" style={{ color: 'var(--primary)', fontWeight: 600 }}>Check Ticket</Link> page.</li>
+              </ul>
             </div>
-          ))}
+          </aside>
         </div>
-      )}
+      </div>
     </div>
   );
 }
