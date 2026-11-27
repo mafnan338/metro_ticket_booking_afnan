@@ -43,7 +43,7 @@ async function start() {
     console.log(`Environment: ${env.NODE_ENV || "development"}`);
     console.log(
       chatbotConfigured()
-        ? `AI chatbot enabled (model: ${env.ANTHROPIC_MODEL || "claude-haiku-5-5"})`
+        ? `AI chatbot enabled (model: ${env.ANTHROPIC_MODEL || "claude-sonnet-4-5"})`
         : "AI chatbot disabled: set ANTHROPIC_API_KEY in backend/config.env",
     );
   });

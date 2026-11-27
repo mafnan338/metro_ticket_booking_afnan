@@ -379,7 +379,7 @@ function classifyError(err) {
 
 function createModel() {
   return new ChatAnthropic({
-    model: process.env.ANTHROPIC_MODEL || "claude-haiku-5-5",
+    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
     apiKey: process.env.ANTHROPIC_API_KEY.trim(),
     temperature: 0,
     maxTokens: 1024,
