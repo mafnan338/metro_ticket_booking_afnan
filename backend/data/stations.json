@@ -1,0 +1,22 @@
+[
+  {"stationId": "ST001", "name": "Whitefield", "line": "Purple Line", "price": 5},
+  {"stationId": "ST002", "name": "Kadubeesanahalli", "line": "Purple Line", "price": 6},
+  {"stationId": "ST003", "name": "Hosur Road", "line": "Purple Line", "price": 8},
+  {"stationId": "ST004", "name": "Silk Board", "line": "Purple Line", "price": 10},
+  {"stationId": "ST005", "name": "Jalahalli", "line": "Blue Line", "price": 3},
+  {"stationId": "ST006", "name": "Jnanabharathi", "line": "Blue Line", "price": 4},
+  {"stationId": "ST007", "name": "MVJ College", "line": "Blue Line", "price": 5},
+  {"stationId": "ST008", "name": "Peenya", "line": "Blue Line", "price": 6},
+  {"stationId": "ST009", "name": "Rajajinagar", "line": "Blue Line", "price": 7},
+  {"stationId": "ST010", "name": "Majestic", "line": "Blue Line", "price": 8},
+  {"stationId": "ST011", "name": "Chamrajpet", "line": "Green Line", "price": 5},
+  {"stationId": "ST012", "name": "KSR Chennappa Circle", "line": "Green Line", "price": 6},
+  {"stationId": "ST013", "name": "Saptha Sthalli", "line": "Green Line", "price": 7},
+  {"stationId": "ST014", "name": "Cauvery Hospital", "line": "Green Line", "price": 8},
+  {"stationId": "ST015", "name": "Krishnarajapuram", "line": "Green Line", "price": 9},
+  {"stationId": "ST016", "name": "Mathikere", "line": "Red Line", "price": 4},
+  {"stationId": "ST017", "name": "Vasanthapura", "line": "Red Line", "price": 5},
+  {"stationId": "ST018", "name": "Peenya Industrial Area", "line": "Red Line", "price": 6},
+  {"stationId": "ST019", "name": "Ejipura", "line": "Orange Line", "price": 7},
+  {"stationId": "ST020", "name": "Richmond Avenue", "line": "Orange Line", "price": 9}
+]
